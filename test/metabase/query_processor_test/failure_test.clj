@@ -40,7 +40,9 @@
    :native       bad-query:native}
   (-> (qp/process-query (bad-query))
       (update :error (every-pred string? seq))
-      (update :stacktrace valid-stacktrace?)))
+      (update :stacktrace valid-stacktrace?)
+      ;; don't care about query hash + type
+      (dissoc :info)))
 
 ;; running via `process-query-and-save-execution!` should return similar info and a bunch of other nonsense too
 (expect
@@ -60,4 +62,5 @@
       (update :error (every-pred string? seq))
       (update :started_at (partial instance? java.util.Date))
       (update :stacktrace valid-stacktrace?)
-      (update :running_time (complement neg?))))
+      (update :running_time (complement neg?))
+      (dissoc :info)))

@@ -77,13 +77,6 @@
   [query options]
   (do-async (:database query) qp/process-query-and-save-with-max-results-constraints! query options))
 
-(defn process-query-without-save!
-  "Async version of `metabase.query-processor/process-query-without-save!`. Runs query asynchronously, and returns a
-  `core.async` channel that can be used to fetch the results once the query finishes running. Closing the channel will
-  cancel the query."
-  [user query]
-  (do-async (:database query) qp/process-query-without-save! user query))
-
 
 ;;; ------------------------------------------------ Result Metadata -------------------------------------------------
 
@@ -103,11 +96,11 @@
     ;; set up a pipe to get the async QP results and pipe them thru to out-chan
     (async.u/single-value-pipe
      (binding [qpi/*disable-qp-logging* true]
-       (process-query-without-save!
-        api/*current-user-id*
+       (process-query
         ;; for purposes of calculating the actual Fields & types returned by this query we really only need the first
         ;; row in the results
         (-> query
+            (assoc-in [:info :executed-by] api/*current-user-id*)
             (assoc-in [:constrains :max-results] 1)
             (assoc-in [:constrains :max-results-bare-rows] 1))))
      out-chan)

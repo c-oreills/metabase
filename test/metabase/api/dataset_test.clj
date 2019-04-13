@@ -7,13 +7,11 @@
             [dk.ative.docjure.spreadsheet :as spreadsheet]
             [expectations :refer :all]
             [medley.core :as m]
-            [metabase
-             [query-processor :as qp]
-             [util :as u]]
             [metabase.models
              [card :refer [Card]]
              [database :as database]
              [query-execution :refer [QueryExecution]]]
+            [metabase.query-processor.middleware.constraints :as constraints]
             [metabase.test
              [data :as data :refer :all]
              [util :as tu]]
@@ -22,6 +20,7 @@
              [datasets :refer [expect-with-driver]]
              [users :refer :all]]
             [metabase.test.util.log :as tu.log]
+            [metabase.util :as u]
             [toucan.db :as db]
             [toucan.util.test :as tt]))
 
@@ -49,6 +48,10 @@
 
 (defn- most-recent-query-execution [] (db/select-one QueryExecution {:order-by [[:id :desc]]}))
 
+(def ^:private query-defaults
+  {:constraints constraints/default-query-constraints
+   :middleware  {:add-default-userland-constraints? true, :userland-query? true}})
+
 ;;; ## POST /api/meta/dataset
 ;; Just a basic sanity check to make sure Query Processor endpoint is still working correctly.
 (expect
@@ -66,9 +69,9 @@
     :context                "ad-hoc"
     :json_query             (-> (data/mbql-query checkins
                                   {:aggregation [[:count]]})
-                                (assoc :type "query")
                                 (assoc-in [:query :aggregation] [["count"]])
-                                (assoc :constraints qp/default-query-constraints))
+                                (assoc :type "query")
+                                (merge query-defaults))
     :started_at             true
     :running_time           true
     :average_execution_time nil
@@ -104,10 +107,11 @@
     :status       "failed"
     :context      "ad-hoc"
     :error        true
-    :json_query   {:database    (id)
-                   :type        "native"
-                   :native      {:query "foobar"}
-                   :constraints qp/default-query-constraints}
+    :json_query   (merge
+                   query-defaults
+                   {:database (id)
+                    :type     "native"
+                    :native   {:query "foobar"}})
     :database_id  (id)
     :started_at   true
     :running_time true}
@@ -130,7 +134,10 @@
   ;; it exists and contains the substring "Syntax error in SQL statement"
   (let [check-error-message (fn [output]
                               (update output :error (fn [error-message]
-                                                      (boolean (re-find #"Syntax error in SQL statement" error-message)))))
+                                                      (some->>
+                                                       error-message
+                                                       (re-find #"Syntax error in SQL statement")
+                                                       boolean))))
         result              (tu.log/suppress-output
                               ((user->client :rasta) :post 200 "dataset" {:database (id)
                                                                           :type     "native"
